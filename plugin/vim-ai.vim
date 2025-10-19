@@ -45,8 +45,12 @@ command! -range=0 -nargs=? -complete=customlist,vim_ai#RoleCompletion AIut    <l
 
 
 command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIEdit    <line1>,<line2>call vim_ai#AIEditRun({}, <q-args>)
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIen    <line1>,<line2>call vim_ai#AIEditRun({}, 
+
+command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIe    <line1>,<line2>call vim_ai#AIEditRun({}, 
             \"Improve English expression.And just give the new expression without other content.")
+command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIen    <line1>,<line2>call vim_ai#AIEditRun({}, 
+            \"Improve English expression. Provide the revised version, teach the hard words.")
+
 command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIw    <line1>,<line2>call vim_ai#AIEditRun({}, 
             \"Write code to complete the comments in the content.And just give the program without other content.")
 command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIr    <line1>,<line2>call vim_ai#AIEditRun({}, 
