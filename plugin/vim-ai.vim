@@ -45,9 +45,18 @@ command! -range=0 -nargs=? -complete=customlist,vim_ai#RoleCompletion AIut    <l
 
 
 command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIEdit    <line1>,<line2>call vim_ai#AIEditRun({}, <q-args>)
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIen    <line1>,<line2>call vim_ai#AIEditRun({}, 
-            \"Improve English expression.And just give the new expression without other content.")
 command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIw    <line1>,<line2>call vim_ai#AIEditRun({}, 
             \"Write code to complete the comments in the content.And just give the program without other content.")
 command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIr    <line1>,<line2>call vim_ai#AIEditRun({}, 
             \"Correct this content.Just make it right.Do not improve it.Just give the content to replace it without anything else.")
+
+
+
+
+command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aie    <line1>,<line2>call vim_ai#AIEditRun({}, 
+            \"Improve English expression.And just give the new expression without other content.")
+command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aien    <line1>,<line2>call vim_ai#AIEditRun({}, 
+            \"Improve English expression and explain it to Chinese student as an English teacher. ")
+
+command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aipro    <line1>,<line2>call vim_ai#AIEditRun({}, 
+            \"Improve expression to be more professional in softeware development area.")
