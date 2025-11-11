@@ -21,7 +21,7 @@ class KnownError(Exception):
 
 def load_api_key():
     config_file_path = os.path.expanduser(vim.eval("g:vim_ai_token_file_path"))
-    api_key_param_value = vim.eval("g:ai_api_key")
+    api_key_param_value = os.environ.get("AI_API_KEY", "")
     try:
         with open(config_file_path, 'r') as file:
             api_key_param_value = file.read()
@@ -207,7 +207,7 @@ def openai_request(url, data, options):
     }
 
     client = OpenAI(
-            api_key=vim.eval("g:ai_api_key"),
+            api_key=os.environ.get("AI_API_KEY", ""),
             base_url=options['endpoint_url'],
             timeout=int(options['request_timeout'])
             )
