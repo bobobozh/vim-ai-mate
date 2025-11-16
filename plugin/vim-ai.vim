@@ -53,9 +53,9 @@ command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIr    <li
 
 
 
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aie    <line1>,<line2>call vim_ai#AIEditRun({}, 
+command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Ae    <line1>,<line2>call vim_ai#AIEditRun({}, 
             \"Improve English expression.And just give the new expression without other content.")
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aien    <line1>,<line2>call vim_ai#AIEditRun({}, 
+command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aen    <line1>,<line2>call vim_ai#AIEditRun({}, 
             \"Improve English expression and explain it to Chinese student as an English teacher. ")
 
 command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aipro    <line1>,<line2>call vim_ai#AIEditRun({}, 
