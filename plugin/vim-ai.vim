@@ -42,21 +42,18 @@ command! -range=0 -nargs=? -complete=customlist,vim_ai#RoleCompletion AIChat    
 command! -range=0 -nargs=? -complete=customlist,vim_ai#RoleCompletion AIp    <line1>,<line2>call vim_ai#AIChatRun(<count>, {}, "Explain")
 command! -range=0 -nargs=? -complete=customlist,vim_ai#RoleCompletion AIut    <line1>,<line2>call vim_ai#AIChatRun(<count>, {}, 
             \"Write functional unit tests (just give the program without other content) for")
-
-
 command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIEdit    <line1>,<line2>call vim_ai#AIEditRun({}, <q-args>)
 command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIw    <line1>,<line2>call vim_ai#AIEditRun({}, 
             \"Write code to complete the comments in the content.And just give the program without other content.")
 command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIr    <line1>,<line2>call vim_ai#AIEditRun({}, 
             \"Correct this content.Just make it right.Do not improve it.Just give the content to replace it without anything else.")
-
-
+command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aten    <line1>,<line2>call vim_ai#AIEditRun({}, 
+            \"Improve English expression and explain it to Chinese student as an English teacher. ")
+command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Apro    <line1>,<line2>call vim_ai#AIEditRun({}, 
+            \"Improve expression to be more professional in softeware development area.")
 
 
 command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aen    <line1>,<line2>call vim_ai#AIEditRun({}, 
             \"Improve English expression.And just give the new expression without other content.")
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aten    <line1>,<line2>call vim_ai#AIEditRun({}, 
-            \"Improve English expression and explain it to Chinese student as an English teacher. ")
-
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Apro    <line1>,<line2>call vim_ai#AIEditRun({}, 
-            \"Improve expression to be more professional in softeware development area.")
+command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aw    <line1>,<line2>call vim_ai#AIEditRun({}, 
+            \"改进这些笔记内容: 保留知识点，形成结构更清晰，表达更完整，专业用语更准确的文章, 给出修改后的直接结果而不用附带其他解释内容。")
