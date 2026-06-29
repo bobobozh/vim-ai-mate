@@ -1,205 +1,150 @@
-# VimAI
+# Vim-AI
 
-VimAI is a powerful Vim plugin that integrates AI capabilities directly into your Vim editor. It allows you to use AI for text generation, code completion, editing, and interactive conversations without leaving your editor.
+VimAI 是一个强大的 Vim 插件，将 AI 能力直接集成到编辑器中。支持文本补全、代码编辑和交互式对话。
 
-## Features
+## 特性
 
-- **Text Completion**: Automatically complete text or code using AI
-- **Text Editing**: Edit and improve existing text or code based on instructions
-- **AI Chat**: Interactive conversation with AI in a separate window
-- **File Inclusion**: Include content from other files in your chat
-- **Role-Based Prompts**: Use predefined roles for different AI tasks
-- **Custom Configuration**: Flexibly configure model parameters, UI behavior, and more
+- **文本补全**: 使用 AI 自动补全文本或代码
+- **文本编辑**: 基于指令编辑和优化现有文本或代码
+- **AI 对话**: 在独立窗口中与 AI 进行交互式对话
+- **文件包含**: 在对话中包含其他文件内容
+- **角色系统**: 使用预定义角色完成不同任务
+- **集中配置**: 统一的配置管理，简单易用
 
-## Installation
+## 安装
 
-### Requirements
-- Vim with Python 3 support (`:echo has('python3')` should return 1)
-- An OpenAI API key (or compatible API service)
+### 依赖
 
-### Using a Plugin Manager
+- Vim 7.4+ with Python 3 support (`:echo has('python3')` should return 1)
+- OpenAI API key (或兼容 API 服务)
 
-The recommended installation method is to use a plugin manager such as Vundle, Pathogen, or Vim-Plug. Add the following line to your vimrc file:
+### 使用插件管理器
+
+推荐使用 Vundle、Pathogen 或 Vim-Plug 安装。在 vimrc 中添加:
 
 ```vim
 Plug 'bobobocode/VimAI'
 ```
 
-Then run the plugin installation command for your manager. For example, with Vim-Plug:
+## 快速开始
 
-```vim
-:PlugInstall
+### 1. 配置 API Key
+
+在 vimrc 中设置或创建 `~/.config/openai.token` 文件:
+
+```
+your-api-key-here
 ```
 
-## Configuration
+### 2. 统一配置
 
-### API Key Setup
-
-You need to set up your API key before using the plugin. You can do this in one of the following ways:
-
-1. Set it in your vimrc:
-   ```vim
-   let g:ai_api_key = "your-api-key-here"
-   ```
-
-2. Store it in a configuration file (`~/.config/openai.token` by default):
-   ```
-   your-api-key-here
-   ```
-
-### Customizing Default Settings
-
-You can customize various aspects of the plugin by adding configuration to your vimrc file. Here are some examples:
+所有配置通过 `g:vim_ai` 集中管理:
 
 ```vim
-" Chat configuration
-let g:vim_ai_chat = {
-\  "options": {
-\    "model": "gpt-4o",
-\    "endpoint_url": "https://api.openai.com/v1/chat/completions",
-\    "temperature": 0.7,
+let g:vim_ai = {
+\  'api': {
+\    'model': 'gpt-4o',
+\    'endpoint_url': 'https://api.openai.com/v1/chat/completions',
+\    'temperature': 0.7,
 \  },
-\  "ui": {
-\    "open_chat_command": "preset_right",
-\  },
-\}
-
-" Text completion configuration
-let g:vim_ai_complete = {
-\  "options": {
-\    "model": "gpt-3.5-turbo-instruct",
-\    "temperature": 0.1,
-\  },
-\}
-
-" Text editing configuration
-let g:vim_ai_edit = {
-\  "options": {
-\    "model": "gpt-3.5-turbo-instruct",
-\    "temperature": 0.3,
+\  'chat': {
+\    'window': {
+\      'preset': 'right',
+\    },
 \  },
 \}
 ```
 
-## Usage
+## 命令
 
-### Basic Commands
+| 命令 | 描述 |
+|------|------|
+| `:AI` | 对当前行/选区进行 AI 补全 |
+| `:AI /role` | 使用角色 (如 `/explain`, `/grammar`) |
+| `:AIChat` | 打开或继续 AI 对话 |
+| `:AINew` | 新建对话 (可指定窗口: `tab`, `bottom`) |
+| `:AIRedo` | 重做上次命令 |
+| `:AISet` | 显示当前配置 |
 
-| Command | Description |
-|---------|-------------|
-| `:AI` | Complete text on the current line or visual selection |
-| `:AI {prompt}` | Complete the given prompt |
-| `:AIChat` | Start or continue a conversation with AI |
-| `:AINewChat` | Start a new conversation in a new window |
-| `:AINewChat {preset}` | Start a new conversation with a window preset (below, tab, right) |
-| `:AIRedo` | Repeat the last AI command |
-
-### Text Editing
+### 使用示例
 
 ```vim
-" Edit the current line
-:AIEdit improve this text
+" 补全当前行
+:AI
 
-" Edit a visual selection
-:'<,'>AIEdit fix grammar and spelling
-```
+" 解释选区代码
+:'<,'>AI /explain
 
-### AI Chat
+" 修复语法错误
+:AI /grammar
 
-```vim
-" Start a new chat
+" 重构代码
+:AI /refactor
+
+" 打开对话
 :AIChat
 
-" Start a chat with a prompt
-:AIChat explain quantum computing
+" 带初始消息打开对话
+:AIChat 分析这段代码
 
-" Include files in your chat
-:AIChat analyze this code
->>> include
-/path/to/file.py
+" 新标签页打开对话
+:AINew tab
 ```
 
-### Role-Based Commands
+## 角色系统
 
-The plugin includes several role-based commands for common tasks:
+预定义角色可通过 `/rolename` 访问:
 
-| Command | Description |
-|---------|-------------|
-| `:AIp` | Explain the selected code |
-| `:AIut` | Generate unit tests for the selected code |
-| `:AIen` | Improve English expression of the selected text |
-| `:AIw` | Complete code comments in the selected content |
-| `:AIr` | Correct errors in the selected content |
+| 角色 | 描述 |
+|------|------|
+| `/explain` | 解释代码 |
+| `/refactor` | 重构代码 |
+| `/test` | 生成单元测试 |
+| `/grammar` | 修复语法错误 |
+| `/translate` | 翻译为英文 |
+| `/chinese` | 改进中文表达 |
+| `/review` | 代码审查 |
+| `/debug` | 调试代码 |
+| `/professional` | 专业表达优化 |
+| `/commit` | 生成 git 提交信息 |
 
-## Key Bindings
+### 自定义角色
 
-You can set up key bindings in your vimrc file for quick access to the plugin's features:
-
-```vim
-" Complete text in normal and visual mode
-nnoremap <leader>a :AI<CR>
-xnoremap <leader>a :AI<CR>
-
-" Edit text in normal and visual mode
-nnoremap <leader>e :AIEdit<CR>
-xnoremap <leader>e :AIEdit<CR>
-
-" Start chat in normal and visual mode
-nnoremap <leader>c :AIChat<CR>
-xnoremap <leader>c :AIChat<CR>
-
-" Redo last AI command
-nnoremap <leader>r :AIRedo<CR>
-```
-
-## Advanced Features
-
-### Chat Window Presets
-
-You can configure where the chat window opens by setting the `open_chat_command` option or using one of the built-in presets:
-
-- `preset_below`: Open chat window below current window
-- `preset_tab`: Open chat in a new tab
-- `preset_right`: Open chat window on the right side
-
-### Role Configuration
-
-You can define custom roles in a `.ini` file to create reusable prompts and configurations:
-
-```vim
-let g:vim_ai_roles_config_file = "/path/to/your/roles.ini"
-```
-
-Example role definition in `roles.ini`:
+在 `roles.ini` 中添加自定义角色:
 
 ```ini
-[grammar]
-prompt = fix spelling and grammar
-
-[grammar.options]
-temperature = 0.4
+[myrole]
+prompt = Your custom prompt here
+options.temperature = 0.5
 ```
 
-## Debugging
+## 窗口预设
 
-To enable debugging, add the following to your vimrc:
+| 预设 | 描述 |
+|------|------|
+| `right` | 右侧 75% 宽度窗口 (默认) |
+| `left` | 左侧 50% 宽度窗口 |
+| `top` | 顶部窗口 |
+| `bottom` | 底部窗口 |
+| `tab` | 新标签页 |
+| `float` | 浮动窗口 |
+
+## 调试
 
 ```vim
-let g:vim_ai_debug = 1
-let g:vim_ai_debug_log_file = "/path/to/debug.log"
+let g:vim_ai = {
+\  'debug': {
+\    'enabled': 1,
+\    'log_file': '/tmp/vim_ai_debug.log',
+\  },
+\}
 ```
 
-## Getting Help
+## 向后兼容
 
-In Vim, you can view the complete help documentation with:
+旧版变量仍然兼容:
 
 ```vim
-:help vim-ai
+let g:llm = 'gpt-4'
+let g:ai_endpoint_url = 'https://api.openai.com/v1/chat/completions'
 ```
-
-## Notes
-
-- Make sure you have correctly configured your API key before use
-- The plugin requires Python 3 support
-- Default model is GPT-4o for chat and GPT-3.5-turbo-instruct for completion and editing
-- For large files or complex requests, you may need to adjust `max_tokens` and `request_timeout` parameters

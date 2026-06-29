@@ -12,48 +12,65 @@ augroup vim_ai
           \ let g:vim_ai_is_selection_pending = mode() =~# "^[vV\<C-v>]"
 augroup END
 
-let g:vim_ai_chat = {
-\  "options": {
-\    "model": g:llm,
-\    "endpoint_url": g:ai_endpoint_url,
-\    "top_p": 0.8,
-\    "temperature": 0.8,
-\  },
-\}
+" =============================================================================
+" Vim-AI 命令定义
+"
+" 核心命令 (5个):
+"   :AI        - 通用补全/编辑（支持角色）
+"   :AIChat    - 打开/继续聊天
+"   :AINew     - 新建聊天
+"   :AIRedo    - 重做上次命令
+"   :AISet     - 显示/设置配置
+"
+" 使用方式:
+"   :AI                    - 对当前行/选区补全
+"   :AI explain this code  - 带指令的补全
+"   :AI /grammar           - 使用角色
+"   :AI /refactor : rust   - 使用角色并传递参数
+"
+"   :AIChat                - 打开聊天
+"   :AIChat explain xxx     - 带初始消息的聊天
+"
+"   :AINew                 - 新建聊天（默认右侧窗口）
+"   :AINew tab             - 在新标签页打开
+"   :AINew bottom          - 在底部窗口打开
+"
+"   :AIRedo                - 重做上次命令
+"
+"   :AISet                 - 显示当前配置
+"   :AISet model=gpt-4     - 设置模型
+"   :AISet window=left     - 设置聊天窗口位置
+" =============================================================================
 
-let g:vim_ai_complete = g:vim_ai_chat
-let g:vim_ai_edit = g:vim_ai_chat
+command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AI    <line1>,<line2>call vim_ai#AIRun({}, <q-args>)
+command! -range=0 -nargs=? -complete=customlist,vim_ai#RoleCompletion AIChat <line1>,<line2>call vim_ai#AIChatRun(<count>, {}, <q-args>)
+command! -nargs=* -complete=customlist,vim_ai#WindowPresetCompletion AINew call vim_ai#AINewChatRun(<f-args>)
+command! -nargs=0 AINewChat call vim_ai#AINewChatRun()
+command! -nargs=0 AIRedo call vim_ai#AIRedoRun()
+command! -nargs=? AISet call vim_ai#ShowConfig()
 
-let g:vim_ai_debug = "1"
-let g:vim_ai_debug_log_file = "/Users/bobobo/Projects/workbench/logs/VimAI.log"
+" =============================================================================
+" 简写命令 (快捷角色)
+"
+" 代码相关:
+"   AIp    - Explain (解释代码)
+"   AIut   - Unit test (生成单元测试)
+"   AIr    - Fix / Refactor (修复/重构)
+"   AIw    - Write from comments (根据注释写代码)
+"
+" 文本相关:
+"   Aen    - Improve English (改进英语表达)
+"   Aten   - English tutor (英语老师，带中文解释)
+"   Apro   - Professional (专业表达)
+"   Aw     - 改进中文笔记
+" =============================================================================
 
+command! -range=0 -nargs=? AIp    <line1>,<line2>call vim_ai#AIChatRun(<count>, {}, "/explain")
+command! -range   -nargs=? AIut   <line1>,<line2>call vim_ai#AIRun({}, "/test")
+command! -range   -nargs=? AIw    <line1>,<line2>call vim_ai#AIRun({}, "/refactor")
+command! -range   -nargs=? AIr    <line1>,<line2>call vim_ai#AIRun({}, "/grammar")
 
-" Whereas AI and AIEdit default to passing the current line as range
-" AIChat defaults to passing nothing which is achieved by -range=0 and passing
-" <count> as described at https://stackoverflow.com/a/20133772
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AI        <line1>,<line2>call vim_ai#AIRun({}, <q-args>)
-
-
-command! -nargs=?                                                     AINewChat                call vim_ai#AINewChatRun(<f-args>)
-command!                                                              AIRedo                   call vim_ai#AIRedoRun()
-
-
-command! -range=0 -nargs=? -complete=customlist,vim_ai#RoleCompletion AIChat    <line1>,<line2>call vim_ai#AIChatRun(<count>, {}, <q-args>)
-command! -range=0 -nargs=? -complete=customlist,vim_ai#RoleCompletion AIp    <line1>,<line2>call vim_ai#AIChatRun(<count>, {}, "Explain")
-command! -range=0 -nargs=? -complete=customlist,vim_ai#RoleCompletion AIut    <line1>,<line2>call vim_ai#AIChatRun(<count>, {}, 
-            \"Write functional unit tests (just give the program without other content) for")
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIEdit    <line1>,<line2>call vim_ai#AIEditRun({}, <q-args>)
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIw    <line1>,<line2>call vim_ai#AIEditRun({}, 
-            \"Write code to complete the comments in the content.And just give the program without other content.")
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion AIr    <line1>,<line2>call vim_ai#AIEditRun({}, 
-            \"Correct this content.Just make it right.Do not improve it.Just give the content to replace it without anything else.")
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aten    <line1>,<line2>call vim_ai#AIEditRun({}, 
-            \"Improve English expression and explain it to Chinese student as an English teacher. ")
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Apro    <line1>,<line2>call vim_ai#AIEditRun({}, 
-            \"Improve expression to be more professional in softeware development area.")
-
-
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aen    <line1>,<line2>call vim_ai#AIEditRun({}, 
-            \"Improve English expression.And just give the new expression without other content.")
-command! -range   -nargs=? -complete=customlist,vim_ai#RoleCompletion Aw    <line1>,<line2>call vim_ai#AIEditRun({}, 
-            \"改进这些笔记内容: 保留知识点，形成结构更清晰，表达更完整，专业用语更准确的文章, 给出修改后的直接结果而不用附带其他解释内容。")
+command! -range   -nargs=? Aen    <line1>,<line2>call vim_ai#AIRun({}, "/english")
+command! -range   -nargs=? Aten   <line1>,<line2>call vim_ai#AIRun({}, "/english-tutor")
+command! -range   -nargs=? Apro   <line1>,<line2>call vim_ai#AIRun({}, "/professional")
+command! -range   -nargs=? Aw     <line1>,<line2>call vim_ai#AIRun({}, "/chinese")

@@ -1,5 +1,8 @@
-" Highlighting code blocks in .aichat files
-" Inspired and based on https://github.com/preservim/vim-markdown
+" =============================================================================
+" Aichat 文件类型插件
+" - 高亮代码块
+" - 高亮聊天选项
+" =============================================================================
 
 if exists('g:vim_markdown_fenced_languages')
   let s:filetype_dict = {}
@@ -23,44 +26,43 @@ endif
 
 function! s:MarkdownHighlightSources(force)
   " Syntax highlight source code embedded in notes.
-  " Look for code blocks in the current file
   let filetypes = {}
   for line in getline(1, '$')
     let ft = matchstr(line, '\(`\{3,}\|\~\{3,}\)\s*\zs[0-9A-Za-z_+-]*\ze.*')
     if !empty(ft) && ft !~# '^\d*$' | let filetypes[ft] = 1 | endif
   endfor
+
   if !exists('b:aichat_known_filetypes')
     let b:aichat_known_filetypes = {}
   endif
   if !exists('b:aichat_included_filetypes')
-    " set syntax file name included
     let b:aichat_included_filetypes = {}
   endif
+
   if !a:force && (b:aichat_known_filetypes == filetypes || empty(filetypes))
     return
   endif
 
-  " Now we're ready to actually highlight the code blocks.
   let startgroup = 'aichatCodeStart'
   let endgroup = 'aichatCodeEnd'
+
   for ft in keys(filetypes)
     if a:force || !has_key(b:aichat_known_filetypes, ft)
-      if has_key(s:filetype_dict, ft)
-        let filetype = s:filetype_dict[ft]
-      else
-        let filetype = ft
-      endif
+      let filetype = get(s:filetype_dict, ft, ft)
       let group = 'aichatSnippet' . toupper(substitute(filetype, '[+-]', '_', 'g'))
+
       if !has_key(b:aichat_included_filetypes, filetype)
         let include = s:SyntaxInclude(filetype)
         let b:aichat_included_filetypes[filetype] = 1
       else
         let include = '@' . toupper(filetype)
       endif
-      let command_backtick = 'syntax region %s matchgroup=%s start="^\s*`\{3,}\s*%s.*$" matchgroup=%s end="\s*`\{3,}\s*$" keepend contains=%s'
-      let command_tilde    = 'syntax region %s matchgroup=%s start="^\s*\~\{3,}\s*%s.*$" matchgroup=%s end="\s*\~\{3,}\s*$" keepend contains=%s'
-      execute printf(command_backtick, group, startgroup, ft, endgroup, include)
-      execute printf(command_tilde,    group, startgroup, ft, endgroup, include)
+
+      let cmd_backtick = 'syntax region %s matchgroup=%s start="^\s*`\{3,}\s*%s.*$" matchgroup=%s end="\s*`\{3,}\s*$" keepend contains=%s'
+      let cmd_tilde    = 'syntax region %s matchgroup=%s start="^\s*\~\{3,}\s*%s.*$" matchgroup=%s end="\s*\~\{3,}\s*$" keepend contains=%s'
+
+      execute printf(cmd_backtick, group, startgroup, ft, endgroup, include)
+      execute printf(cmd_tilde,    group, startgroup, ft, endgroup, include)
       execute printf('syntax cluster aichatNonListItem add=%s', group)
 
       let b:aichat_known_filetypes[ft] = 1
@@ -69,7 +71,7 @@ function! s:MarkdownHighlightSources(force)
 endfunction
 
 function! s:MarkdownHighlightChatOptions(force)
-  " use jproperties syntax to highlight chat options
+  " 高亮聊天选项
   let filetype = 'jproperties'
   if a:force || !has_key(b:aichat_known_filetypes, filetype)
     if !has_key(b:aichat_included_filetypes, filetype)
@@ -84,10 +86,7 @@ function! s:MarkdownHighlightChatOptions(force)
 endfunction
 
 function! s:SyntaxInclude(filetype)
-  " Include the syntax highlighting of another {filetype}.
   let grouplistname = '@' . toupper(a:filetype)
-  " Unset the name of the current syntax while including the other syntax
-  " because some syntax scripts do nothing when "b:current_syntax" is set
   if exists('b:current_syntax')
     let syntax_save = b:current_syntax
     unlet b:current_syntax
@@ -96,9 +95,7 @@ function! s:SyntaxInclude(filetype)
     execute 'syntax include' grouplistname 'syntax/' . a:filetype . '.vim'
     execute 'syntax include' grouplistname 'after/syntax/' . a:filetype . '.vim'
   catch /E484/
-    " Ignore missing scripts
   endtry
-  " Restore the name of the current syntax
   if exists('syntax_save')
     let b:current_syntax = syntax_save
   elseif exists('b:current_syntax')
@@ -107,18 +104,12 @@ function! s:SyntaxInclude(filetype)
   return grouplistname
 endfunction
 
-function! s:IsHighlightSourcesEnabledForBuffer()
-  " Enable for markdown buffers, and for liquid buffers with markdown format
-  return &filetype =~# 'aichat' || get(b:, 'liquid_subtype', '') =~# 'aichat'
-endfunction
-
 function! s:MarkdownRefreshSyntax(force)
   call vim_ai_config#load()
-  if g:vim_ai_chat_default['ui']['code_syntax_enabled'] && &filetype =~# 'aichat'
+  if g:vim_ai.chat.ui.code_syntax && &filetype =~# 'aichat'
     call s:MarkdownHighlightSources(a:force)
     call s:MarkdownHighlightChatOptions(a:force)
   endif
-
 endfunction
 
 function! s:MarkdownClearSyntaxVariables()

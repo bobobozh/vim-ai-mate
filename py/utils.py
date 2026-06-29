@@ -1,114 +1,131 @@
 import vim
 import datetime
 import glob
-import sys
 import os
 import json
 import socket
 import re
 import urllib.error
-from urllib.error import URLError
-from urllib.error import HTTPError
+from urllib.error import URLError, HTTPError
 import traceback
 import configparser
 from openai import OpenAI
 
-is_debugging = vim.eval("g:vim_ai_debug") == "1"
-debug_log_file = vim.eval("g:vim_ai_debug_log_file")
+# =============================================================================
+# 调试支持
+# =============================================================================
+
+def get_debug_config():
+    return {
+        'enabled': vim.eval("g:vim_ai_debug") == "1",
+        'log_file': vim.eval("g:vim_ai_debug_log_file"),
+    }
+
+def print_debug(text, *args):
+    cfg = get_debug_config()
+    if not cfg['enabled']:
+        return
+    with open(cfg['log_file'], "a") as f:
+        f.write(f"[{datetime.datetime.now()}] " + text.format(*args) + "\n")
+
+# =============================================================================
+# API Key 管理
+# =============================================================================
+
+def load_api_key():
+    config_file_path = os.path.expanduser(vim.eval("g:vim_ai_token_file_path"))
+    api_key = os.environ.get("AI_API_KEY", "")
+
+    try:
+        with open(config_file_path, 'r') as f:
+            api_key = f.read().strip()
+    except Exception:
+        pass
+
+    if not api_key:
+        raise KnownError("Missing OpenAI API key")
+
+    # 支持 "api_key,org_id" 格式
+    elements = api_key.split(",")
+    return elements[0].strip(), elements[1].strip() if len(elements) > 1 else None
+
+# =============================================================================
+# 自定义异常
+# =============================================================================
 
 class KnownError(Exception):
     pass
 
-def load_api_key():
-    config_file_path = os.path.expanduser(vim.eval("g:vim_ai_token_file_path"))
-    api_key_param_value = os.environ.get("AI_API_KEY", "")
-    try:
-        with open(config_file_path, 'r') as file:
-            api_key_param_value = file.read()
-    except Exception:
-        pass
-
-    if not api_key_param_value:
-        raise KnownError("Missing OpenAI API key")
-
-    # The text is in format of "<api key>,<org id>" and the
-    # <org id> part is optional
-    elements = api_key_param_value.strip().split(",")
-    api_key = elements[0].strip()
-    org_id = None
-
-    if len(elements) > 1:
-        org_id = elements[1].strip()
-
-    return (api_key, org_id)
+# =============================================================================
+# 配置处理
+# =============================================================================
 
 def normalize_config(config):
-    normalized = { **config }
-    # initial prompt can be both a string and a list of strings, normalize it to list
-    if 'initial_prompt' in config['options'] and isinstance(config['options']['initial_prompt'], str):
-        normalized['options']['initial_prompt'] = normalized['options']['initial_prompt'].split('\n')
+    """标准化配置格式"""
+    normalized = dict(config)
+    if 'initial_prompt' in config and isinstance(config['initial_prompt'], str):
+        normalized['initial_prompt'] = normalized['initial_prompt'].split('\n')
     return normalized
 
-
-def make_openai_options(options):
-    max_tokens = int(options['max_tokens'])
+def get_api_config(config):
+    """从配置中提取 API 相关参数"""
+    api_section = config.get('api', config)
     return {
-        'model': options['model'],
-        'max_tokens': max_tokens if max_tokens > 0 else None,
-        'temperature': float(options['temperature']),
+        'model': api_section.get('model', 'gpt-4o'),
+        'endpoint_url': api_section.get('endpoint_url', 'https://api.openai.com/v1/chat/completions'),
+        'temperature': float(api_section.get('temperature', 0.7)),
+        'top_p': float(api_section.get('top_p', 0.8)),
+        'max_tokens': int(api_section.get('max_tokens', 0)),
+        'timeout': float(api_section.get('timeout', 20)),
     }
 
-def make_http_options(options):
+def get_http_config(config):
+    """从配置中提取 HTTP 相关参数"""
+    api_section = config.get('api', config)
     return {
-        'request_timeout': float(options['request_timeout']),
-        'enable_auth': bool(int(options['enable_auth'])),
+        'timeout': float(api_section.get('timeout', 20)),
+        'enable_auth': True,
     }
 
-# During text manipulation in Vim's visual mode, we utilize "normal! c" command. This command deletes the highlighted text,
-# immediately followed by entering insert mode where it generates desirable text.
+# =============================================================================
+# OpenAI 请求
+# =============================================================================
 
-# Normally, Vim contemplates the position of the first character in selection to decide whether to place the entered text
-# before or after the cursor. For instance, if the given line is "abcd", and "abc" is selected for deletion and "1234" is
-# written in its place, the result is as expected "1234d" rather than "d1234". However, if "bc" is chosen for deletion, the
-# achieved output is "a1234d", whereas "1234ad" is not.
+OPENAI_RESP_DONE = '[DONE]'
 
-# Despite this, post Vim script's execution of "normal! c", it takes an exit immediately returning to the normal mode. This
-# might trigger a potential misalignment issue especially when the most extreme left character is the line’s second character.
+def openai_request(url, data, options):
+    """发送 OpenAI 请求，支持流式响应"""
+    print_debug('url: {}\ndata: {}\noptions: {}', url, data, options)
 
-# To avoid such pitfalls, the method "need_insert_before_cursor" checks not only the selection status, but also the character
-# at the first position of the highlighting. If the selection is off or the first position is not the second character in the line,
-# it determines no need for prefixing the cursor.
-def need_insert_before_cursor(is_selection):
-    if is_selection == False:
-        return False
-    pos = vim.eval("getpos(\"'<\")[1:2]")
-    if not isinstance(pos, list) or len(pos) != 2:
-        raise ValueError("Unexpected getpos value, it should be a list with two elements")
-    return pos[1] == "1" # determines if visual selection starts on the first window column
+    api_key, _ = load_api_key()
 
-def render_text_chunks(chunks, is_selection):
-    generating_text = False
-    full_text = ''
-    insert_before_cursor = need_insert_before_cursor(is_selection)
-    for text in chunks:
-        if not text.strip() and not generating_text:
-            continue # trim newlines from the beginning
-        generating_text = True
-        if insert_before_cursor:
-            vim.command("normal! i" + text)
-            insert_before_cursor = False
-        else:
-            vim.command("normal! a" + text)
-        vim.command("undojoin")
-        vim.command("redraw")
-        full_text += text
-    if not full_text.strip():
-        print_info_message('Empty response received. Tip: You can try modifying the prompt and retry.')
+    client = OpenAI(
+        api_key=api_key,
+        base_url=options['endpoint_url'],
+        timeout=int(options['timeout'])
+    )
 
+    completion = client.chat.completions.create(
+        model=options['model'],
+        temperature=float(options['temperature']),
+        top_p=float(options['top_p']),
+        messages=data['messages'],
+        stream=True,
+        stream_options={"include_usage": False}
+    )
+
+    for chunk in completion:
+        yield json.loads(chunk.model_dump_json())
+
+# =============================================================================
+# 聊天消息解析
+# =============================================================================
 
 def parse_chat_messages(chat_content):
+    """解析聊天格式的消息"""
     lines = chat_content.splitlines()
     messages = []
+
     for line in lines:
         if line.startswith(">>> system"):
             messages.append({"role": "system", "content": ""})
@@ -126,112 +143,131 @@ def parse_chat_messages(chat_content):
             continue
         messages[-1]["content"] += "\n" + line
 
-    for message in messages:
-        # strip newlines from the content as it causes empty responses
-        message["content"] = message["content"].strip()
+    # 处理消息内容
+    result = []
+    for msg in messages:
+        msg["content"] = msg["content"].strip()
 
-        if message["role"] == "include":
-            message["role"] = "user"
-            paths = message["content"].split("\n")
-            message["content"] = ""
+        if msg["role"] == "include":
+            msg = handle_include_directive(msg)
+            if msg is None:
+                continue
 
-            pwd = vim.eval("getcwd()")
-            for i in range(len(paths)):
-                path = os.path.expanduser(paths[i])
-                if not os.path.isabs(path):
-                    path = os.path.join(pwd, path)
+        result.append(msg)
 
-                paths[i] = path
+    return result
 
-                if '**' in path:
-                    paths[i] = None
-                    paths.extend(glob.glob(path, recursive=True))
+def handle_include_directive(msg):
+    """处理 include 指令"""
+    msg["role"] = "user"
+    paths = msg["content"].split("\n")
+    msg["content"] = ""
 
-            for path in paths:
-                if path is None:
-                    continue
+    pwd = vim.eval("getcwd()")
+    for i in range(len(paths)):
+        path = os.path.expanduser(paths[i])
+        if not os.path.isabs(path):
+            path = os.path.join(pwd, path)
 
-                if os.path.isdir(path):
-                    continue
+        if '**' in path:
+            paths.extend(glob.glob(path, recursive=True))
+            paths[i] = None
+            continue
 
-                try:
-                    with open(path, "r") as file:
-                        message["content"] += f"\n\n==> {path} <==\n" + file.read()
-                except UnicodeDecodeError:
-                    message["content"] += "\n\n" + f"==> {path} <=="
-                    message["content"] += "\n" + "Binary file, cannot display"
+        paths[i] = path
 
-    return messages
+    for path in paths:
+        if path is None:
+            continue
+        if os.path.isdir(path):
+            continue
+
+        try:
+            with open(path, "r") as f:
+                msg["content"] += f"\n\n==> {path} <==\n" + f.read()
+        except UnicodeDecodeError:
+            msg["content"] += "\n\n" + f"==> {path} <==\nBinary file, cannot display"
+
+    return msg
 
 def parse_chat_header_options():
+    """解析聊天窗口头部的 [chat-options] 配置"""
     try:
         options = {}
         lines = vim.eval('getline(1, "$")')
-        contains_chat_options = '[chat-options]' in lines
-        if contains_chat_options:
-            # parse options that are defined in the chat header
-            options_index = lines.index('[chat-options]')
-            for line in lines[options_index + 1:]:
-                if line.startswith('#'):
-                    # ignore comments
-                    continue
-                if line == '':
-                    # stop at the end of the region
-                    break
-                (key, value) = line.strip().split('=')
-                if key == 'initial_prompt':
-                    value = value.split('\\n')
-                options[key] = value
+        if '[chat-options]' not in lines:
+            return options
+
+        options_index = lines.index('[chat-options]')
+        for line in lines[options_index + 1:]:
+            if line.startswith('#'):
+                continue
+            if line == '':
+                break
+            key, value = line.strip().split('=')
+            if key == 'initial_prompt':
+                value = value.split('\\n')
+            options[key] = value
         return options
-    except:
+    except Exception:
         raise Exception("Invalid [chat-options]")
 
+# =============================================================================
+# Vim 交互辅助
+# =============================================================================
+
 def vim_break_undo_sequence():
-    # breaks undo sequence (https://vi.stackexchange.com/a/29087)
+    """中断撤销序列"""
     vim.command("let &ul=&ul")
 
-def printDebug(text, *args):
-    if not is_debugging:
-        return
-    with open(debug_log_file, "a") as file:
-        file.write(f"[{datetime.datetime.now()}] " + text.format(*args) + "\n")
+def need_insert_before_cursor(is_selection):
+    """判断是否需要在光标前插入"""
+    if not is_selection:
+        return False
+    pos = vim.eval("getpos(\"'<\")[1:2]")
+    if not isinstance(pos, list) or len(pos) != 2:
+        raise ValueError("Unexpected getpos value")
+    return pos[1] == "1"
 
-OPENAI_RESP_DATA_PREFIX = 'data: '
-OPENAI_RESP_DONE = '[DONE]'
+def render_text_chunks(chunks, is_selection):
+    """渲染流式文本块"""
+    generating_text = False
+    full_text = ''
+    insert_before_cursor = need_insert_before_cursor(is_selection)
 
-def openai_request(url, data, options):
-    printDebug('url: {}\ndata: {}\noptions: {}', url, data, options)
+    for text in chunks:
+        if not text.strip() and not generating_text:
+            continue
+        generating_text = True
 
-    headers = {
-        "Content-Type": "application/json",
-    }
+        if insert_before_cursor:
+            vim.command("normal! i" + text)
+            insert_before_cursor = False
+        else:
+            vim.command("normal! a" + text)
+        vim.command("undojoin")
+        vim.command("redraw")
+        full_text += text
 
-    client = OpenAI(
-            api_key=os.environ.get("AI_API_KEY", ""),
-            base_url=options['endpoint_url'],
-            timeout=int(options['request_timeout'])
-            )
-    completion = client.chat.completions.create(
-            model=options['model'],
-            temperature=float(options['temperature']),
-            top_p=float(options['top_p']),
-            messages=data['messages'],
-            stream=True,
-            stream_options={"include_usage": False}
-            )
-    for chunk in completion:
-        yield json.loads(chunk.model_dump_json())
+    if not full_text.strip():
+        print_info_message('Empty response received. Tip: You can try modifying the prompt and retry.')
 
 def print_info_message(msg):
+    """显示信息消息"""
     vim.command("redraw")
     vim.command(r'call feedkeys("\<Esc>")')
     vim.command("echohl ErrorMsg")
     vim.command(f"echomsg '{msg}'")
     vim.command("echohl None")
 
+def clear_echo_message():
+    """清除回显消息"""
+    vim.command("call feedkeys(':','nx')")
+
 def handle_completion_error(error):
-    # nvim throws - pynvim.api.common.NvimError: Keyboard interrupt
+    """处理完成过程中的错误"""
     is_nvim_keyboard_interrupt = "Keyboard interrupt" in str(error)
+
     if isinstance(error, KeyboardInterrupt) or is_nvim_keyboard_interrupt:
         print_info_message("Completion cancelled...")
     elif isinstance(error, URLError) and isinstance(error.reason, socket.timeout):
@@ -241,8 +277,8 @@ def handle_completion_error(error):
         msg = f"OpenAI: HTTPError {status_code}"
         if status_code == 401:
             msg += ' (Hint: verify that your API key is valid)'
-        if status_code == 404:
-            msg += ' (Hint: verify that you have access to the OpenAI API and to the model)'
+        elif status_code == 404:
+            msg += ' (Hint: verify that you have access to the OpenAI API)'
         elif status_code == 429:
             msg += ' (Hint: verify that your billing plan is "Pay as you go")'
         print_info_message(msg)
@@ -251,34 +287,33 @@ def handle_completion_error(error):
     else:
         raise error
 
-# clears "Completing..." message from the status line
-def clear_echo_message():
-    # https://neovim.discourse.group/t/how-to-clear-the-echo-message-in-the-command-line/268/3
-    vim.command("call feedkeys(':','nx')")
+# =============================================================================
+# 角色配置
+# =============================================================================
 
 def enhance_roles_with_custom_function(roles):
+    """通过自定义函数增强角色配置"""
     if vim.eval("exists('g:vim_ai_roles_config_function')") == '1':
         roles_config_function = vim.eval("g:vim_ai_roles_config_function")
         if not vim.eval("exists('*" + roles_config_function + "')"):
             raise Exception(f"Role config function does not exist: {roles_config_function}")
-        else:
-            roles.update(vim.eval(roles_config_function + "()"))
+        roles.update(vim.eval(roles_config_function + "()"))
 
 def load_role_config(role):
+    """加载指定角色的配置"""
     roles_config_path = os.path.expanduser(vim.eval("g:vim_ai_roles_config_file"))
     if not os.path.exists(roles_config_path):
         raise Exception(f"Role config file does not exist: {roles_config_path}")
 
     roles = configparser.ConfigParser()
     roles.read(roles_config_path)
-
     enhance_roles_with_custom_function(roles)
 
-    if not role in roles:
+    if role not in roles:
         raise Exception(f"Role `{role}` not found")
 
     options = roles[f"{role}.options"] if f"{role}.options" in roles else {}
-    options_complete =roles[f"{role}.options-complete"] if f"{role}.options-complete" in roles else {}
+    options_complete = roles[f"{role}.options-complete"] if f"{role}.options-complete" in roles else {}
     options_chat = roles[f"{role}.options-chat"] if f"{role}.options-chat" in roles else {}
 
     return {
@@ -297,10 +332,11 @@ empty_role_options = {
 }
 
 def parse_prompt_and_role(raw_prompt):
+    """解析提示词和角色"""
     prompt = raw_prompt.strip()
     role = re.split(' |:', prompt)[0]
+
     if not role.startswith('/'):
-        # does not require role
         return (prompt, empty_role_options)
 
     prompt = prompt[len(role):].strip()
@@ -310,4 +346,5 @@ def parse_prompt_and_role(raw_prompt):
     if 'prompt' in config['role'] and config['role']['prompt']:
         delim = '' if prompt.startswith(':') else ':\n'
         prompt = config['role']['prompt'] + delim + prompt
+
     return (prompt, config['options'])
