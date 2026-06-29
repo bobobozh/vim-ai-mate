@@ -161,7 +161,50 @@ endfunction
 " 补全渲染状态
 " =============================================================================
 
-let s:complete_state = {'started': 0, 'insert_before': 0, 'bufnr': 0}
+let s:complete_state = {'started': 0, 'insert_before': 0, 'bufnr': 0, 'buffer': '', 'vimcmds': []}
+
+" =============================================================================
+" 解析并执行 vim 命令（从 <<...>> 格式）
+" =============================================================================
+
+function! s:ExecuteVimCommands(text)
+  let l:cmds = []
+  let l:remaining = ''
+  let l:pos = 0
+
+  while 1
+    let l:start = stridx(a:text, '<<', l:pos)
+    if l:start < 0
+      let l:remaining .= a:text[l:pos:]
+      break
+    endif
+
+    let l:remaining .= a:text[l:pos : l:start - 1]
+    let l:end = stridx(a:text, '>>', l:start + 2)
+    if l:end < 0
+      let l:remaining .= a:text[l:start:]
+      break
+    endif
+
+    let l:cmd = a:text[l:start + 2 : l:end - 1]
+    if !empty(l:cmd)
+      call add(l:cmds, l:cmd)
+    endif
+
+    let l:pos = l:end + 2
+  endwhile
+
+  " 执行命令
+  for l:cmd in l:cmds
+    try
+      execute l:cmd
+    catch
+      echoerr 'Vim command error: ' . v:exception
+    endtry
+  endfor
+
+  return l:remaining
+endfunction
 
 " =============================================================================
 " AI 补全命令
@@ -222,6 +265,7 @@ function! vim_ai#AIRun(config, ...) dict range abort
   let s:complete_state.started = 0
   let s:complete_state.insert_before = s:NeedInsertBeforeCursor(l:is_selection)
   let s:complete_state.bufnr = bufnr('%')
+  let s:complete_state.buffer = ''
   echo 'Completing...'
 
   " 发送异步请求
@@ -237,27 +281,65 @@ function! s:OnCompleteChunk(text)
   if !a:text
     return
   endif
-  if !s:complete_state.started && !trim(a:text)
-    return
-  endif
-  let s:complete_state.started = 1
+
+  let s:complete_state.buffer .= a:text
 
   if s:complete_state.bufnr != bufnr('%')
     return
   endif
 
-  if s:complete_state.insert_before
-    execute "normal! i" . a:text
-    let s:complete_state.insert_before = 0
+  " 检查是否有 vim 命令
+  if stridx(s:complete_state.buffer, '<<') >= 0
+    " 有命令，需要处理整个 buffer
+    let l:text = s:complete_state.buffer
+    let s:complete_state.buffer = ''
+    let l:text = s:ExecuteVimCommands(l:text)
+    if !empty(l:text)
+      if !s:complete_state.started && !trim(l:text)
+        return
+      endif
+      let s:complete_state.started = 1
+      if s:complete_state.insert_before
+        execute "normal! i" . l:text
+        let s:complete_state.insert_before = 0
+      else
+        execute "normal! a" . l:text
+      endif
+      execute "undojoin"
+    endif
   else
-    execute "normal! a" . a:text
+    " 没有命令，直接显示
+    if !s:complete_state.started && !trim(a:text)
+      return
+    endif
+    let s:complete_state.started = 1
+    if s:complete_state.insert_before
+      execute "normal! i" . a:text
+      let s:complete_state.insert_before = 0
+    else
+      execute "normal! a" . a:text
+    endif
+    execute "undojoin"
   endif
-  execute "undojoin"
+
   execute "redraw"
 endfunction
 
 function! s:OnCompleteDone()
   call s:SetNoPaste()
+  " 处理可能残留的 buffer（最后一块可能不包含 <<）
+  if !empty(s:complete_state.buffer)
+    let l:text = s:ExecuteVimCommands(s:complete_state.buffer)
+    if !empty(l:text)
+      if s:complete_state.insert_before
+        execute "normal! i" . l:text
+      else
+        execute "normal! a" . l:text
+      endif
+      execute "undojoin"
+    endif
+    let s:complete_state.buffer = ''
+  endif
   echo 'Done.'
   execute "redraw"
 endfunction

@@ -41,3 +41,4 @@ command! -range   -nargs=? Aen    <line1>,<line2>call vim_ai#AIRun({}, "/english
 command! -range   -nargs=? Aten   <line1>,<line2>call vim_ai#AIRun({}, "/english-tutor")
 command! -range   -nargs=? Apro   <line1>,<line2>call vim_ai#AIRun({}, "/professional")
 command! -range   -nargs=? Aw     <line1>,<line2>call vim_ai#AIRun({}, "/chinese")
+command! -range   -nargs=? AIv    <line1>,<line2>call vim_ai#AIRun({}, "/vimcmd")
