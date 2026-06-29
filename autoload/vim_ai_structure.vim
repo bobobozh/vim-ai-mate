@@ -1,17 +1,14 @@
 " =============================================================================
 " Vim-AI 代码结构可视化模块
-" 解析代码结构，生成 PlantUML，推送到服务器实时展示
-" 支持 Vim split 窗口结构树视图（类似 tagbar）
+" 解析代码结构，在 Vim split 窗口中显示结构树
+" 光标位置自动同步高亮并居中
 " =============================================================================
 
-let s:structure_server_url = 'http://localhost:8765/update'
-let s:structure_ws_port = 8766
 let s:structure_auto_update = 0
 let s:structure_win_name = 'AI-Structure'
 let s:structure_bufnr = -1
 let s:structure_source_bufnr = -1
-let s:structure_items = []  " 所有结构元素列表 [{name, line, type, indent}]
-let s:structure_ascii_mode = 0  " 0: 树形视图, 1: PlantUML ASCII
+let s:structure_items = []
 
 " =============================================================================
 " 代码结构解析器（基于 filetype）
@@ -213,144 +210,6 @@ function! s:ParseGenericStructure(lines)
 endfunction
 
 " =============================================================================
-" PlantUML 生成器
-" =============================================================================
-
-function! vim_ai_structure#ToPlantUML(structure)
-  let l:puml = '@startuml\n'
-  let l:puml .= 'skinparam backgroundColor #1a1a2e\n'
-  let l:puml .= 'skinparam handwritten false\n'
-  let l:puml .= 'skinparam shadowing false\n'
-  let l:puml .= 'skinparam classBackgroundColor #16213e\n'
-  let l:puml .= 'skinparam classBorderColor #e94560\n'
-  let l:puml .= 'skinparam classFontColor #eee\n'
-  let l:puml .= 'skinparam classAttributeIconSize 0\n'
-  let l:puml .= 'skinparam packageBackgroundColor #0f3460\n'
-  let l:puml .= 'skinparam packageBorderColor #00cec9\n'
-  let l:puml .= 'skinparam arrowColor #e94560\n'
-  let l:puml .= 'skinparam noteBackgroundColor #00b894\n'
-  let l:puml .= 'skinparam noteBorderColor #00b894\n'
-  let l:puml .= 'skinparam noteFontColor #fff\n'
-  let l:puml .= '\n'
-  let l:puml .= 'title "' . a:structure.file . ' - ' . a:structure.ft . '"\n'
-  let l:puml .= '\n'
-  
-  let l:code = a:structure.code
-  
-  if has_key(l:code, 'classes')
-    for l:cls in l:code.classes
-      let l:puml .= 'class "' . l:cls.name . '" as C_' . l:cls.name . ' {\n'
-      if has_key(l:code, 'methods') && has_key(l:code.methods, l:cls.name)
-        for l:m in l:code.methods[l:cls.name]
-          let l:puml .= '  ' . l:m.name . '()\n'
-        endfor
-      endif
-      let l:puml .= '}\n'
-    endfor
-  endif
-  
-  if has_key(l:code, 'funcs')
-    if !empty(l:code.funcs)
-      let l:puml .= 'package "Functions" {\n'
-      for l:f in l:code.funcs
-        let l:puml .= '  note "' . l:f.name . '" as F_' . substitute(l:f.name, '[^a-zA-Z0-9]', '_', 'g') . '\n'
-      endfor
-      let l:puml .= '}\n'
-    endif
-  endif
-  
-  if has_key(l:code, 'structs')
-    for l:s in l:code.structs
-      let l:puml .= 'class "' . l:s.name . '" as S_' . l:s.name . ' <<struct>>\n'
-    endfor
-  endif
-  
-  if has_key(l:code, 'interfaces')
-    for l:i in l:code.interfaces
-      let l:puml .= 'interface "' . l:i.name . '" as I_' . l:i.name . '\n'
-    endfor
-  endif
-  
-  if has_key(l:code, 'commands')
-    if !empty(l:code.commands)
-      let l:puml .= 'package "Commands" {\n'
-      for l:c in l:code.commands
-        let l:puml .= '  note "' . l:c.name . '" as Cmd_' . substitute(l:c.name, '[^a-zA-Z0-9]', '_', 'g') . '\n'
-      endfor
-      let l:puml .= '}\n'
-    endif
-  endif
-  
-  if has_key(l:code, 'headers')
-    let l:puml .= 'package "Document Structure" {\n'
-    for l:h in l:code.headers
-      let l:prefix = repeat('  ', l:h.level - 1)
-      let l:puml .= l:prefix . 'note "H' . l:h.level . ': ' . l:h.title . '" as H_' . l:h.line . '\n'
-    endfor
-    let l:puml .= '}\n'
-  endif
-  
-  let l:puml .= '@enduml'
-  
-  return substitute(l:puml, '\\n', "\n", 'g')
-endfunction
-
-" =============================================================================
-" 推送更新到服务器
-" =============================================================================
-
-function! vim_ai_structure#PushUpdate()
-  let l:structure = vim_ai_structure#Parse()
-  let l:puml = vim_ai_structure#ToPlantUML(l:structure)
-  
-  " 用 curl POST
-  let l:payload = json_encode({'puml': l:puml, 'file': l:structure.file, 'ft': l:structure.ft})
-  let l:tmpfile = tempname()
-  call writefile([l:payload], l:tmpfile)
-  
-  let l:cmd = 'curl -s -X POST -H "Content-Type: application/json" --data-binary @' . l:tmpfile . ' ' . s:structure_server_url
-  
-  try
-    let l:output = system(l:cmd)
-    call delete(l:tmpfile)
-    echo 'Structure pushed to http://localhost:8765'
-  catch
-    echoerr 'Failed to push structure: ' . v:exception
-    call delete(l:tmpfile)
-  endtry
-endfunction
-
-" =============================================================================
-" 启动/停止自动更新
-" =============================================================================
-
-function! vim_ai_structure#StartAutoUpdate()
-  augroup vim_ai_structure
-    autocmd!
-    autocmd BufWritePost * call vim_ai_structure#PushUpdate()
-    autocmd BufEnter * call vim_ai_structure#PushUpdate()
-  augroup END
-  let s:structure_auto_update = 1
-  echo 'Auto structure update enabled'
-endfunction
-
-function! vim_ai_structure#StopAutoUpdate()
-  augroup vim_ai_structure
-    autocmd!
-  augroup END
-  let s:structure_auto_update = 0
-  echo 'Auto structure update disabled'
-endfunction
-
-function! vim_ai_structure#ToggleAutoUpdate()
-  if s:structure_auto_update
-    call vim_ai_structure#StopAutoUpdate()
-  else
-    call vim_ai_structure#StartAutoUpdate()
-  endif
-endfunction
-
-" " =============================================================================
 " 命令
 " =============================================================================
 
@@ -358,9 +217,6 @@ command! AIStructure call vim_ai_structure#ToggleWindow()
 command! AIStructureOpen call vim_ai_structure#OpenWindow()
 command! AIStructureClose call vim_ai_structure#CloseWindow()
 command! AIStructureRefresh call vim_ai_structure#RefreshWindow()
-command! AIStructureStart call vim_ai_structure#StartAutoUpdate()
-command! AIStructureStop call vim_ai_structure#StopAutoUpdate()
-command! AIStructureServer echo 'Run: python3 ' . expand('<sfile>:p:h') . '/../tools/structure_server.py'
 
 " =============================================================================
 " 结构树视图窗口管理
@@ -522,9 +378,6 @@ function! vim_ai_structure#RefreshWindow()
   
   " 同步当前光标位置
   call vim_ai_structure#SyncCursor()
-  
-  " 推送到浏览器（如果服务器运行）
-  call vim_ai_structure#PushUpdate()
 endfunction
 
 function! s:BufSetLines(buf, start, end, keep, lines)
