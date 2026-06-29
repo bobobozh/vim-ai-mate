@@ -2,8 +2,11 @@
 
 Vim-AI 是一个强大的 Vim 插件，将 AI 能力直接集成到编辑器中。支持文本补全、代码编辑和交互式对话，默认使用阿里云通义千问（DashScope）。
 
+> **pure-vim 分支**: 纯 Vimscript 实现，零 Python 依赖，基于 `curl` + `job` 的异步流式请求。
+
 ## 特性
 
+- **纯 Vimscript**: 零 Python 依赖，只需系统有 `curl` 即可
 - **文本补全**: 使用 AI 自动补全文本或代码
 - **文本编辑**: 基于指令编辑和优化现有文本或代码
 - **AI 对话**: 在独立窗口中与 AI 进行交互式对话
@@ -16,8 +19,8 @@ Vim-AI 是一个强大的 Vim 插件，将 AI 能力直接集成到编辑器中�
 
 ### 依赖
 
-- Vim 7.4+ / Neovim with Python 3 support（`:echo has('python3')` 应返回 1）
-- Python `openai` 包：`pip install openai`
+- Vim 8.0+ / Neovim（支持 `job` 和 `json_decode`）
+- 系统安装 `curl`（macOS / Linux 默认自带）
 - DashScope API Key（或其他 OpenAI 兼容服务的 API Key）
 
 ### 使用插件管理器

@@ -111,42 +111,6 @@ endfunction
 call s:InitConfig()
 
 " -----------------------------------------------------------------------------
-" 快捷配置函数
-" -----------------------------------------------------------------------------
-
-" 设置 API key
-function! vim_ai#SetApiKey(key) abort
-  let g:vim_ai.api.api_key = a:key
-endfunction
-
-" 设置模型
-function! vim_ai#SetModel(model) abort
-  let g:vim_ai.api.model = a:model
-endfunction
-
-" 切换聊天窗口预设
-function! vim_ai#SetChatWindow(preset) abort
-  if !has_key(s:window_presets, a:preset)
-    echoerr "Unknown window preset: " . a:preset . ". Available: " . join(keys(s:window_presets), ", ")
-    return
-  endif
-  let g:vim_ai.chat.window.preset = a:preset
-endfunction
-
-" 打印当前配置
-function! vim_ai#ShowConfig() abort
-  echo "Vim-AI Current Configuration:"
-  echo "================================"
-  echo "API Provider:  " . g:vim_ai.api.provider
-  echo "Model:         " . g:vim_ai.api.model
-  echo "Endpoint:      " . g:vim_ai.api.endpoint_url
-  echo "Temperature:   " . g:vim_ai.api.temperature
-  echo "Chat Window:   " . g:vim_ai.chat.window.preset
-  echo "Roles Config:  " . g:vim_ai.roles.config_file
-  echo "Debug:         " . (g:vim_ai.debug.enabled ? "ON" : "OFF")
-endfunction
-
-" -----------------------------------------------------------------------------
 " 兼容性别名
 " -----------------------------------------------------------------------------
 let g:vim_ai_chat = g:vim_ai.chat
@@ -160,4 +124,11 @@ let g:vim_ai_token_file_path = g:vim_ai.api.api_key_file
 " 触发自动加载
 " -----------------------------------------------------------------------------
 function! vim_ai_config#load()
+endfunction
+
+" -----------------------------------------------------------------------------
+" 深拷贝合并（供其他模块使用）
+" -----------------------------------------------------------------------------
+function! vim_ai_config#ExtendDeep(defaults, override) abort
+  return s:DeepExtend(a:defaults, a:override)
 endfunction
