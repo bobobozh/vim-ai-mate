@@ -42,3 +42,15 @@ command! -range   -nargs=? Aten   <line1>,<line2>call vim_ai#AIRun({}, "/english
 command! -range   -nargs=? Apro   <line1>,<line2>call vim_ai#AIRun({}, "/professional")
 command! -range   -nargs=? Aw     <line1>,<line2>call vim_ai#AIRun({}, "/chinese")
 command! -range   -nargs=? AIv    <line1>,<line2>call vim_ai#AIRun({}, "/vimcmd")
+
+" =============================================================================
+" 提示词工程命令
+" =============================================================================
+
+command! -nargs=0 AIPrompt       call vim_ai_prompt#StartPrompt()
+command! -nargs=0 AIPromptDraft  call vim_ai_prompt#StartDraft()
+command! -nargs=0 AIPromptRefine call vim_ai_prompt#RefinePrompt()
+command! -nargs=0 AIPromptIterate call vim_ai_prompt#IteratePrompt()
+command! -nargs=0 AIPromptSave   call vim_ai_prompt#SavePrompt()
+command! -nargs=0 AIPromptLoad   call vim_ai_prompt#LoadPrompt()
+command! -nargs=0 AIPromptList   call vim_ai_prompt#ListTemplates()
