@@ -19,6 +19,18 @@ let s:default = {
 \    "top_p": 0.8,
 \    "max_tokens": 0,
 \  },
+\  "context": {
+\    "enabled": 1,
+\    "git": {
+\      "enabled": 1,
+\      "max_diff_chars": 4000,
+\      "include_status": 1,
+\    },
+\    "cursor": {
+\      "enabled": 1,
+\      "window_lines": 20,
+\    },
+\  },
 \  "chat": {
 \    "initial_prompt": [
 \      ">>> system",
@@ -131,4 +143,23 @@ endfunction
 " -----------------------------------------------------------------------------
 function! vim_ai_config#ExtendDeep(defaults, override) abort
   return s:DeepExtend(a:defaults, a:override)
+endfunction
+
+" -----------------------------------------------------------------------------
+" 便捷读取配置 — 支持点号分隔的 key path
+" vim_ai_config#Get('api.model') → g:vim_ai.api.model
+" vim_ai_config#Get('chat.window.preset', 'right') → 带默认值
+" -----------------------------------------------------------------------------
+function! vim_ai_config#Get(key, ...) abort
+  let l:default = a:0 > 0 ? a:1 : v:none
+  let l:keys = split(a:key, '\.')
+  let l:val = g:vim_ai
+  for l:k in l:keys
+    if type(l:val) == v:t_dict && has_key(l:val, l:k)
+      let l:val = l:val[l:k]
+    else
+      return l:default
+    endif
+  endfor
+  return l:val
 endfunction

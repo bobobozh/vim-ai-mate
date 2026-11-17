@@ -1,14 +1,12 @@
 " =============================================================================
-" Vim-AI 提示词工程模块
+" Vim-AI 提示词工程模块（异步版）
 " 协助编写提示词的完整工作流：
 "   1. 草稿模式 - 快速记录想法
-"   2. 细化模式 - AI 协助完善提示词
-"   3. 迭代模式 - 基于结果反馈优化
+"   2. 细化模式 - AI 协助完善提示词（异步）
+"   3. 迭代模式 - 基于结果反馈优化（异步）
 " =============================================================================
 
-let s:prompt_history = []
-let s:prompt_templates = {}
-let s:prompt_state = {'mode': 'draft', 'current': '', 'refined': '', 'result': '', 'iterations': 0}
+let s:prompt_state = {'mode': 'idle', 'current': '', 'refined': '', 'result': '', 'iterations': 0}
 
 " =============================================================================
 " 提示词模板库
@@ -79,10 +77,10 @@ endfunction
 
 function! vim_ai_prompt#StartDraft()
   let s:prompt_state = {'mode': 'draft', 'current': '', 'refined': '', 'result': '', 'iterations': 0}
-  
+
   echo '=== 提示词草稿模式 ==='
   echo '请输入你的想法（输入 .done 结束）：'
-  
+
   let l:lines = []
   while 1
     let l:line = input('> ')
@@ -91,26 +89,26 @@ function! vim_ai_prompt#StartDraft()
     endif
     call add(l:lines, l:line)
   endwhile
-  
+
   let s:prompt_state.current = join(l:lines, "\n")
-  
+
   if empty(s:prompt_state.current)
     echo '提示词不能为空'
     return
   endif
-  
+
   echo "\n你的草稿："
   echo s:prompt_state.current
   echo "\n是否需要 AI 协助细化？(y/n)"
   let l:choice = input('> ')
-  
+
   if l:choice =~# '^y'
     call vim_ai_prompt#RefinePrompt()
   endif
 endfunction
 
 " =============================================================================
-" 细化模式
+" 细化模式（异步）
 " =============================================================================
 
 function! vim_ai_prompt#RefinePrompt()
@@ -118,45 +116,66 @@ function! vim_ai_prompt#RefinePrompt()
     echo '请先输入草稿（:AIPromptDraft）'
     return
   endif
-  
+
+  let s:prompt_state.mode = 'refining'
   echo '=== 提示词细化模式 ==='
-  echo '正在分析你的草稿并生成优化建议...'
-  
+  echo '正在异步分析你的草稿...'
+
   let l:refine_prompt = s:built_in_templates.brainstorm.template
   let l:refine_prompt = substitute(l:refine_prompt, '{topic}', '优化以下提示词', 'g')
   let l:refine_prompt = substitute(l:refine_prompt, '{constraints}', '让提示词更清晰、具体、可执行', 'g')
   let l:refine_prompt .= "\n\n原始提示词草稿：\n" . s:prompt_state.current
-  
-  let l:payload = json_encode({
-    \ 'model': vim_ai_config#Get('api.model'),
-    \ 'messages': [{
-    \   'role': 'user',
-    \   'content': l:refine_prompt
-    \ }],
-    \ 'temperature': 0.7
-  \})
-  
-  let l:response = vim_ai_http#Request(
-    \ vim_ai_config#Get('api.endpoint_url'),
-    \ l:payload
-  )
-  
-  if !empty(l:response)
-    let s:prompt_state.refined = l:response
-    echo "\nAI 优化后的提示词："
-    echo l:response
-    echo "\n是否使用此提示词？(y/n)"
-    let l:choice = input('> ')
-    if l:choice =~# '^y'
-      let s:prompt_state.current = s:prompt_state.refined
-    endif
-  else
-    echoerr '细化失败，请重试'
+
+  let l:options = {
+        \ 'model': vim_ai_config#Get('api.model', 'qwen-plus'),
+        \ 'endpoint_url': vim_ai_config#Get('api.endpoint_url'),
+        \ 'temperature': 0.7,
+        \ 'timeout': vim_ai_config#Get('api.timeout', 30),
+        \ }
+
+  let l:messages = [
+        \ {'role': 'user', 'content': l:refine_prompt},
+        \ ]
+
+  " 异步非流式请求 — 不阻塞 Vim
+  call vim_ai_http#ChatOnce(
+        \ l:options, l:messages,
+        \ function('vim_ai_prompt#OnRefineDone'),
+        \ function('vim_ai_prompt#OnRefineError')
+        \ )
+endfunction
+
+function! vim_ai_prompt#OnRefineDone(result)
+  let s:prompt_state.mode = 'idle'
+  let l:response = trim(a:result.content)
+  let l:usage = a:result.usage
+
+  if empty(l:response)
+    echoerr '细化返回为空'
+    return
+  endif
+
+  let s:prompt_state.refined = l:response
+
+  echo "\nAI 优化后的提示词："
+  echo l:response
+  echo vim_ai#FormatUsage(l:usage)
+  echo "\n是否使用此提示词？(y/n)"
+  let l:choice = input('> ')
+
+  if l:choice =~# '^y'
+    let s:prompt_state.current = s:prompt_state.refined
+    echo '已采用优化后的提示词'
   endif
 endfunction
 
+function! vim_ai_prompt#OnRefineError(err)
+  let s:prompt_state.mode = 'idle'
+  echoerr '提示词细化失败：' . a:err
+endfunction
+
 " =============================================================================
-" 迭代模式
+" 迭代模式（异步）
 " =============================================================================
 
 function! vim_ai_prompt#IteratePrompt()
@@ -164,12 +183,12 @@ function! vim_ai_prompt#IteratePrompt()
     echo '请先输入提示词（:AIPromptDraft）'
     return
   endif
-  
+
   echo '=== 提示词迭代模式 ==='
   echo '当前提示词：'
   echo s:prompt_state.current
   echo "\n请输入上一次的结果或反馈（输入 .done 结束）："
-  
+
   let l:lines = []
   while 1
     let l:line = input('> ')
@@ -178,16 +197,17 @@ function! vim_ai_prompt#IteratePrompt()
     endif
     call add(l:lines, l:line)
   endwhile
-  
+
   let s:prompt_state.result = join(l:lines, "\n")
-  
+
   if empty(s:prompt_state.result)
     echo '反馈不能为空'
     return
   endif
-  
-  echo "\n正在分析反馈并优化提示词..."
-  
+
+  let s:prompt_state.mode = 'iterating'
+  echo "\n正在异步分析反馈并优化..."
+
   let l:iterate_prompt = "你是一位提示词工程专家。请根据原始提示词和执行结果，分析问题并优化提示词。\n\n" .
     \ "原始提示词：\n" . s:prompt_state.current . "\n\n" .
     \ "执行结果：\n" . s:prompt_state.result . "\n\n" .
@@ -204,46 +224,68 @@ function! vim_ai_prompt#IteratePrompt()
     \ "---\n" .
     \ "{优化后的提示词}\n" .
     \ "---"
-  
-  let l:payload = json_encode({
-    \ 'model': vim_ai_config#Get('api.model'),
-    \ 'messages': [{
-    \   'role': 'user',
-    \   'content': l:iterate_prompt
-    \ }],
-    \ 'temperature': 0.5
-  \})
-  
-  let l:response = vim_ai_http#Request(
-    \ vim_ai_config#Get('api.endpoint_url'),
-    \ l:payload
-  )
-  
-  if !empty(l:response)
-    let s:prompt_state.iterations += 1
-    
-    " 提取优化后的提示词
-    let l:start = stridx(l:response, '【优化后提示词】')
-    if l:start >= 0
-      let l:after = l:response[l:start + 8:]
-      let l:dash_start = stridx(l:after, '---')
-      let l:dash_end = stridx(l:after, '---', l:dash_start + 3)
-      if l:dash_start >= 0 && l:dash_end >= 0
-        let l:new_prompt = l:after[l:dash_start + 3 : l:dash_end - 1]
-        let s:prompt_state.current = trim(l:new_prompt)
-      endif
-    endif
-    
-    echo "\n迭代 #" . s:prompt_state.iterations . " 结果："
-    echo l:response
-    echo "\n是否使用优化后的提示词？(y/n)"
-    let l:choice = input('> ')
-    if !(l:choice =~# '^y')
-      echo '保留原提示词'
-    endif
-  else
-    echoerr '迭代失败，请重试'
+
+  let l:options = {
+        \ 'model': vim_ai_config#Get('api.model', 'qwen-plus'),
+        \ 'endpoint_url': vim_ai_config#Get('api.endpoint_url'),
+        \ 'temperature': 0.5,
+        \ 'timeout': vim_ai_config#Get('api.timeout', 30),
+        \ }
+
+  let l:messages = [
+        \ {'role': 'user', 'content': l:iterate_prompt},
+        \ ]
+
+  call vim_ai_http#ChatOnce(
+        \ l:options, l:messages,
+        \ function('vim_ai_prompt#OnIterateDone'),
+        \ function('vim_ai_prompt#OnIterateError')
+        \ )
+endfunction
+
+function! vim_ai_prompt#OnIterateDone(result)
+  let s:prompt_state.mode = 'idle'
+  let l:response = trim(a:result.content)
+  let l:usage = a:result.usage
+
+  if empty(l:response)
+    echoerr '迭代返回为空'
+    return
   endif
+
+  let s:prompt_state.iterations += 1
+
+  " 提取优化后的提示词
+  let l:new_prompt = ''
+  let l:start = stridx(l:response, '【优化后提示词】')
+  if l:start >= 0
+    let l:after = l:response[l:start + 8:]
+    let l:dash_start = stridx(l:after, '---')
+    let l:dash_end = stridx(l:after, '---', l:dash_start + 3)
+    if l:dash_start >= 0 && l:dash_end >= 0
+      let l:new_prompt = trim(l:after[l:dash_start + 3 : l:dash_end - 1])
+    endif
+  endif
+
+  echo "\n迭代 #" . s:prompt_state.iterations . " 结果："
+  echo l:response
+  echo vim_ai#FormatUsage(l:usage)
+
+  if !empty(l:new_prompt)
+    echo "\n提取到优化后提示词："
+    echo l:new_prompt
+    echo "\n是否更新当前提示词？(y/n)"
+    let l:choice = input('> ')
+    if l:choice =~# '^y'
+      let s:prompt_state.current = l:new_prompt
+      echo '已更新提示词'
+    endif
+  endif
+endfunction
+
+function! vim_ai_prompt#OnIterateError(err)
+  let s:prompt_state.mode = 'idle'
+  echoerr '提示词迭代失败：' . a:err
 endfunction
 
 " =============================================================================
@@ -255,45 +297,43 @@ function! vim_ai_prompt#SavePrompt()
     echo '没有可保存的提示词'
     return
   endif
-  
+
   let l:name = input('请输入提示词名称：')
   if empty(l:name)
     echo '名称不能为空'
     return
   endif
-  
-  let l:prompt_dir = expand('~/.vim/ai_prompts')
+
+  let l:prompt_dir = vim_ai_store#Path('prompts')
   if !isdirectory(l:prompt_dir)
     call mkdir(l:prompt_dir, 'p')
   endif
-  
+
   let l:filename = l:prompt_dir . '/' . l:name . '.txt'
   call writefile([s:prompt_state.current], l:filename)
-  
-  call add(s:prompt_history, {'name': l:name, 'path': l:filename, 'time': localtime()})
-  
+
   echo '提示词已保存到：' . l:filename
 endfunction
 
 function! vim_ai_prompt#LoadPrompt()
-  let l:prompt_dir = expand('~/.vim/ai_prompts')
+  let l:prompt_dir = vim_ai_store#Path('prompts')
   if !isdirectory(l:prompt_dir)
     echo '提示词目录不存在'
     return
   endif
-  
+
   let l:files = glob(l:prompt_dir . '/*.txt')
   if empty(l:files)
     echo '没有保存的提示词'
     return
   endif
-  
+
   echo '可用提示词：'
   for l:i in range(len(l:files))
     let l:name = fnamemodify(l:files[l:i], ':t:r')
     echo (l:i + 1) . '. ' . l:name
   endfor
-  
+
   let l:choice = input('请选择提示词序号：')
   if !empty(l:choice) && str2nr(l:choice) > 0 && str2nr(l:choice) <= len(l:files)
     let l:filename = l:files[str2nr(l:choice) - 1]
@@ -316,7 +356,7 @@ function! vim_ai_prompt#ListTemplates()
     echo '  ' . l:key . ' - ' . l:tpl.name
     echo '     ' . l:tpl.description
   endfor
-  
+
   let l:choice = input('请输入模板名称使用：')
   if has_key(s:built_in_templates, l:choice)
     let s:prompt_state.current = s:built_in_templates[l:choice].template

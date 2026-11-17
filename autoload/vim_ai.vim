@@ -261,6 +261,9 @@ function! vim_ai#AIRun(config, ...) dict range abort
         \ {'role': 'user', 'content': l:prompt},
         \ ]
 
+  " 自动注入开发环境上下文
+  let l:messages = vim_ai_context#Inject(l:messages)
+
   " 渲染状态
   let s:complete_state.started = 0
   let s:complete_state.insert_before = s:NeedInsertBeforeCursor(l:is_selection)
@@ -325,7 +328,7 @@ function! s:OnCompleteChunk(text)
   execute "redraw"
 endfunction
 
-function! s:OnCompleteDone()
+function! s:OnCompleteDone(...)
   call s:SetNoPaste()
   " 处理可能残留的 buffer（最后一块可能不包含 <<）
   if !empty(s:complete_state.buffer)
@@ -340,7 +343,8 @@ function! s:OnCompleteDone()
     endif
     let s:complete_state.buffer = ''
   endif
-  echo 'Done.'
+  let l:usage = a:0 > 0 ? a:1.usage : {}
+  echo 'Done.' . s:FormatUsage(l:usage)
   execute "redraw"
 endfunction
 
@@ -391,6 +395,9 @@ function! vim_ai#AIChatRun(uses_range, config, ...) dict range abort
   " 解析消息
   let l:full_content = trim(join(getline(1, '$'), "\n"))
   let [l:messages, l:header_opts] = s:ParseChatMessages(l:full_content)
+
+  " 自动注入开发环境上下文
+  let l:messages = vim_ai_context#Inject(l:messages)
 
   " 合并选项
   let l:api_opts = {
@@ -564,11 +571,12 @@ function! s:OnChatChunk(text)
   execute "redraw"
 endfunction
 
-function! s:OnChatDone()
+function! s:OnChatDone(...)
   call s:SetNoPaste()
   execute "normal! a\n\n>>> user\n\n"
+  let l:usage = a:0 > 0 ? a:1.usage : {}
+  echo 'Done.' . s:FormatUsage(l:usage)
   execute "redraw"
-  echo 'Done.'
 endfunction
 
 function! s:OnChatError(err)
@@ -634,4 +642,33 @@ function! vim_ai#ShowConfig() abort
   echo "Chat Window:  " . g:vim_ai.chat.window.preset
   echo "Roles File:   " . g:vim_ai.roles.config_file
   echo "Debug:        " . (g:vim_ai.debug.enabled ? "ON" : "OFF")
+endfunction
+
+" =============================================================================
+" Token 用量格式化
+" =============================================================================
+
+function! s:FormatUsage(usage) abort
+  if empty(a:usage)
+    return ''
+  endif
+  let l:parts = []
+  if has_key(a:usage, 'prompt_tokens') && a:usage.prompt_tokens > 0
+    call add(l:parts, 'in:' . a:usage.prompt_tokens)
+  endif
+  if has_key(a:usage, 'completion_tokens') && a:usage.completion_tokens > 0
+    call add(l:parts, 'out:' . a:usage.completion_tokens)
+  endif
+  if has_key(a:usage, 'total_tokens') && a:usage.total_tokens > 0
+    call add(l:parts, 'total:' . a:usage.total_tokens)
+  endif
+  if empty(l:parts)
+    return ''
+  endif
+  return ' [' . join(l:parts, ', ') . ']'
+endfunction
+
+" 公开版本，供其他模块（prompt, tools 等）使用
+function! vim_ai#FormatUsage(usage) abort
+  return s:FormatUsage(a:usage)
 endfunction
