@@ -72,7 +72,7 @@ command! AEPaste                       call vim_ai_english#PasteExpression()
 " 陪伴编写（自动异步，不阻塞）
 " =============================================================================
 
-command! -nargs=? AICompanionOn   call vim_ai_companion#Enable(<q-args>)
+command! -nargs=* AICompanionOn   call vim_ai_companion#Enable(<f-args>)
 command! AICompanionOff           call vim_ai_companion#Disable()
 command! AICompanionStatus        call vim_ai_companion#Status()
 

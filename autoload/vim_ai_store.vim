@@ -15,7 +15,8 @@ let s:subdirs = {
 " 获取存储根目录（可通过 g:vim_ai.store_root 覆盖）
 " -----------------------------------------------------------------------------
 function! vim_ai_store#Root() abort
-  let l:cfg_root = get(g:vim_ai, 'store_root', '')
+  let l:cfg = get(g:, 'vim_ai', {})
+  let l:cfg_root = type(l:cfg) == v:t_dict ? get(l:cfg, 'store_root', '') : ''
   if !empty(l:cfg_root)
     return expand(l:cfg_root)
   endif
